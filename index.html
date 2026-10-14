@@ -41,6 +41,10 @@
     header.expanded { position: static; }
     .filters input[type=search] { width: 100%; }
     .row .label { min-width: 36px; }
+    .top { flex-wrap: nowrap; gap: 8px; }
+    h1 { font-size: 18px; white-space: nowrap; }
+    .updated { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .top button.plain { flex: none; padding: 4px 8px; }
   }
   .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
   .chip.cat.on { color: #fff; }
@@ -83,6 +87,7 @@
     <h1>שידורי ספורט</h1>
     <span class="updated" id="updated"></span>
     <span class="spacer"></span>
+    <button class="plain" id="resetBtn">איפוס</button>
     <button class="plain" id="filterBtn">סינון</button>
   </div>
   <div class="row"><span class="label">יום</span><span id="days" class="chips"></span></div>
@@ -158,7 +163,14 @@ function renderControls() {
   const fb = $("filterBtn");
   fb.textContent = n ? `סינון · ${n}` : "סינון";
   fb.classList.toggle("active", n > 0);
+  $("resetBtn").style.display = n ? "" : "none";
 }
+
+// Reset sport, channel and search filters (day and view stay as they are)
+$("resetBtn").onclick = () => {
+  st.cats = Object.keys(CATS); st.hidden = [...DEFAULT_HIDDEN]; st.q = ""; $("q").value = "";
+  update();
+};
 
 $("filterBtn").onclick = () => {
   const open = $("filters").classList.toggle("open");
@@ -220,7 +232,9 @@ async function load() {
   try {
     const r = await fetch("schedule.json", { cache: "no-store" });
     data = await r.json();
-    const u = data.updated ? `עודכן ${data.updated.slice(8, 10)}.${data.updated.slice(5, 7)} ${data.updated.slice(11)}` : "טוען…";
+    // "עודכן 19:51" when updated today, otherwise with the date (makes stale data obvious)
+    const u = !data.updated ? "טוען…" : data.updated.startsWith(ymd(new Date())) ? `עודכן ${data.updated.slice(11)}`
+      : `עודכן ${data.updated.slice(8, 10)}.${data.updated.slice(5, 7)} ${data.updated.slice(11)}`;
     $("updated").innerHTML = esc(u) + (data.errors?.length ? ` <span class="err">(${data.errors.length} ימים לא נטענו)</span>` : "");
     update();
   } catch (e) { $("updated").textContent = "שגיאה בטעינה"; }
