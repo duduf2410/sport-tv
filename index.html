@@ -25,9 +25,23 @@
   h1 { font-size: 20px; margin: 0; }
   .updated { color: var(--muted); font-size: 13px; }
   .spacer { flex: 1; }
-  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+  .row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; flex: 1; }
   .chip { border: 1px solid var(--line); background: var(--chip); color: var(--text); border-radius: 999px;
-          padding: 4px 11px; font: inherit; font-size: 14px; cursor: pointer; user-select: none; }
+          padding: 4px 11px; font: inherit; font-size: 14px; cursor: pointer; user-select: none;
+          flex: none; white-space: nowrap; }
+  #filterBtn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  @media (min-width: 768px) { #filterBtn { display: none; } }
+  @media (max-width: 767px) {
+    /* Phone: one scrolling line per row, filters folded behind the "סינון" button */
+    .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .chips::-webkit-scrollbar { display: none; }
+    .filters { display: none; }
+    .filters.open { display: block; }
+    header.expanded { position: static; }
+    .filters input[type=search] { width: 100%; }
+    .row .label { min-width: 36px; }
+  }
   .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
   .chip.cat.on { color: #fff; }
   .chip.cat.football.on { background: var(--football); border-color: var(--football); }
@@ -69,13 +83,14 @@
     <h1>שידורי ספורט</h1>
     <span class="updated" id="updated"></span>
     <span class="spacer"></span>
-    <input type="search" id="q" placeholder="חיפוש: מכבי, ריאל…">
+    <button class="plain" id="filterBtn">סינון</button>
   </div>
-  <div class="row"><span class="label">יום</span><span id="days" class="row" style="margin:0"></span></div>
-  <div class="row"><span class="label">ענף</span><span id="cats" class="row" style="margin:0"></span></div>
-  <div class="row"><span class="label">ערוצים</span><span id="channels" class="row" style="margin:0"></span></div>
-  <div class="row"><span class="label">תצוגה</span><span id="views" class="row" style="margin:0"></span>
-    <span class="chip" id="pastToggle"></span>
+  <div class="row"><span class="label">יום</span><span id="days" class="chips"></span></div>
+  <div class="filters" id="filters">
+    <div class="row"><input type="search" id="q" placeholder="חיפוש: מכבי, ריאל…"></div>
+    <div class="row"><span class="label">ענף</span><span id="cats" class="chips"></span></div>
+    <div class="row"><span class="label">ערוצים</span><span id="channels" class="chips"></span></div>
+    <div class="row"><span class="label">תצוגה</span><span id="views" class="chips"></span></div>
   </div>
 </header>
 <main id="main"></main>
@@ -135,9 +150,20 @@ function renderControls() {
   const v = $("views"); v.innerHTML = "";
   v.append(chip("לפי שעה", st.view === "time", () => { st.view = "time"; update(); }));
   v.append(chip("לפי ערוץ", st.view === "channel", () => { st.view = "channel"; update(); }));
-  const p = $("pastToggle"); p.textContent = "הסתר מה שנגמר"; p.className = `chip ${st.hidePast ? "on" : ""}`;
-  p.onclick = () => { st.hidePast = !st.hidePast; update(); };
+  v.append(chip("הסתר מה שנגמר", st.hidePast, () => { st.hidePast = !st.hidePast; update(); }));
+
+  // Filter button shows how many restrictions are active (folded away on phones)
+  const n = (Object.keys(CATS).length - st.cats.length) +
+    st.hidden.filter(h => !DEFAULT_HIDDEN.includes(h) && chans.includes(h)).length + (st.q.trim() ? 1 : 0);
+  const fb = $("filterBtn");
+  fb.textContent = n ? `סינון · ${n}` : "סינון";
+  fb.classList.toggle("active", n > 0);
 }
+
+$("filterBtn").onclick = () => {
+  const open = $("filters").classList.toggle("open");
+  document.querySelector("header").classList.toggle("expanded", open);
+};
 
 function itemHTML(i, now, withChannel) {
   const isNow = i.start <= now && now < i.end, isPast = i.end <= now;
@@ -201,7 +227,7 @@ async function load() {
 }
 
 $("q").value = st.q;
-$("q").oninput = e => { st.q = e.target.value; save(); renderList(); };
+$("q").oninput = e => { st.q = e.target.value; update(); };
 load();
 setInterval(renderList, 60e3);   // keep "עכשיו" / past markers current
 setInterval(load, 10 * 60e3);    // pick up the hourly update
