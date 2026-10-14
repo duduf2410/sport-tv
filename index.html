@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>שידורי ספורט</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --text: #1b1f24; --muted: #6b7280; --line: #e3e6ea;
+    --accent: #c8102e; --chip: #eef0f3; --live: #c8102e;
+    --football: #1f9d55; --basketball: #e8730c; --other: #2f6fd6; --studio: #8a8f98;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121417; --card: #1b1e23; --text: #e8eaed; --muted: #9aa0a6; --line: #2b2f36;
+      --chip: #262a31; --studio: #9aa0a6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+           padding: 10px 16px; }
+  .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  .updated { color: var(--muted); font-size: 13px; }
+  .spacer { flex: 1; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+  .chip { border: 1px solid var(--line); background: var(--chip); color: var(--text); border-radius: 999px;
+          padding: 4px 11px; font: inherit; font-size: 14px; cursor: pointer; user-select: none; }
+  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .chip.cat.on { color: #fff; }
+  .chip.cat.football.on { background: var(--football); border-color: var(--football); }
+  .chip.cat.basketball.on { background: var(--basketball); border-color: var(--basketball); }
+  .chip.cat.other.on { background: var(--other); border-color: var(--other); }
+  .chip.cat.studio.on { background: var(--studio); border-color: var(--studio); }
+  .label { color: var(--muted); font-size: 13px; min-width: 42px; }
+  input[type=search] { font: inherit; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line);
+                       background: var(--card); color: var(--text); width: 180px; }
+  button.plain { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--card);
+                 color: var(--text); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  main { padding: 12px 16px 40px; max-width: 1400px; margin: 0 auto; }
+  .day { font-weight: 700; margin: 18px 0 6px; font-size: 16px; }
+  .list { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .item { display: grid; grid-template-columns: 48px 6px 1fr auto; gap: 10px; align-items: center;
+          padding: 8px 12px; border-top: 1px solid var(--line); }
+  .item:first-child { border-top: 0; }
+  .item.past { opacity: .45; }
+  .item.now { background: color-mix(in srgb, var(--live) 8%, transparent); }
+  .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .bar { width: 4px; height: 100%; min-height: 22px; border-radius: 2px; }
+  .bar.football { background: var(--football); } .bar.basketball { background: var(--basketball); }
+  .bar.other { background: var(--other); } .bar.studio { background: var(--studio); }
+  .title { min-width: 0; }
+  .badge { font-size: 12px; color: var(--muted); white-space: nowrap; border: 1px solid var(--line);
+           border-radius: 6px; padding: 1px 7px; }
+  .live { color: #fff; background: var(--live); border-radius: 4px; font-size: 11px; padding: 1px 5px;
+          margin-inline-start: 6px; vertical-align: 1px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .col h3 { margin: 0; padding: 8px 12px; font-size: 15px; border-bottom: 1px solid var(--line); }
+  .col .item { grid-template-columns: 48px 6px 1fr; }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+  .err { color: var(--accent); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>שידורי ספורט</h1>
+    <span class="updated" id="updated"></span>
+    <span class="spacer"></span>
+    <input type="search" id="q" placeholder="חיפוש: מכבי, ריאל…">
+  </div>
+  <div class="row"><span class="label">יום</span><span id="days" class="row" style="margin:0"></span></div>
+  <div class="row"><span class="label">ענף</span><span id="cats" class="row" style="margin:0"></span></div>
+  <div class="row"><span class="label">ערוצים</span><span id="channels" class="row" style="margin:0"></span></div>
+  <div class="row"><span class="label">תצוגה</span><span id="views" class="row" style="margin:0"></span>
+    <span class="chip" id="pastToggle"></span>
+  </div>
+</header>
+<main id="main"></main>
+
+<script>
+const CATS = { football: "כדורגל", basketball: "כדורסל", other: "ספורט אחר", studio: "אולפנים ותכניות" };
+// Simulcasts of other channels — hidden by default
+const DEFAULT_HIDDEN = ["ספורט מובייל", "רדיו ספורט 5", "אתר ערוץ הספורט"];
+const DAYNAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const ORDER = ["ספורט 5", "ספורט 5+", "ספורט 5 Live", "ספורט 5 Stars", "5MAX", "ספורט 1", "ספורט 2", "ספורט 3", "ספורט 4", "ספורט 5 4K"];
+const rank = c => { const i = ORDER.indexOf(c); return i < 0 ? 99 : i; };
+const byChannel = (a, b) => rank(a) - rank(b) || a.localeCompare(b, "he");
+
+let data = { items: [] };
+let st = { day: "today", view: "time", cats: Object.keys(CATS), hidden: DEFAULT_HIDDEN, q: "", hidePast: true };
+try { Object.assign(st, JSON.parse(localStorage.getItem("sporttv") || "{}")); } catch (e) {}
+const save = () => { try { localStorage.setItem("sporttv", JSON.stringify(st)); } catch (e) {} };
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function dayLabel(key) {
+  const today = new Date(); const tomorrow = new Date(Date.now() + 864e5);
+  if (key === ymd(today)) return "היום";
+  if (key === ymd(tomorrow)) return "מחר";
+  const d = new Date(key + "T12:00");
+  return `${DAYNAMES[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}`;
+}
+
+function chip(text, on, onclick, cls = "") {
+  const b = document.createElement("button");
+  b.className = `chip ${cls} ${on ? "on" : ""}`; b.textContent = text; b.onclick = onclick;
+  return b;
+}
+
+function renderControls() {
+  const days = [...new Set(data.items.map(i => i.start.slice(0, 10)))].sort();
+  const dayKey = st.day === "today" ? ymd(new Date()) : st.day;
+  const d = $("days"); d.innerHTML = "";
+  days.forEach(k => d.append(chip(dayLabel(k), k === dayKey,
+    () => { st.day = k === ymd(new Date()) ? "today" : k; update(); })));
+  d.append(chip("הכל", st.day === "all", () => { st.day = "all"; update(); }));
+
+  const c = $("cats"); c.innerHTML = "";
+  Object.entries(CATS).forEach(([k, v]) => c.append(chip(v, st.cats.includes(k), () => {
+    st.cats = st.cats.includes(k) ? st.cats.filter(x => x !== k) : [...st.cats, k]; update();
+  }, `cat ${k}`)));
+
+  const chans = [...new Set(data.items.map(i => i.channel))].sort(byChannel);
+  const ch = $("channels"); ch.innerHTML = "";
+  chans.forEach(k => ch.append(chip(k, !st.hidden.includes(k), () => {
+    st.hidden = st.hidden.includes(k) ? st.hidden.filter(x => x !== k) : [...st.hidden, k]; update();
+  })));
+
+  const v = $("views"); v.innerHTML = "";
+  v.append(chip("לפי שעה", st.view === "time", () => { st.view = "time"; update(); }));
+  v.append(chip("לפי ערוץ", st.view === "channel", () => { st.view = "channel"; update(); }));
+  const p = $("pastToggle"); p.textContent = "הסתר מה שנגמר"; p.className = `chip ${st.hidePast ? "on" : ""}`;
+  p.onclick = () => { st.hidePast = !st.hidePast; update(); };
+}
+
+function itemHTML(i, now, withChannel) {
+  const isNow = i.start <= now && now < i.end, isPast = i.end <= now;
+  return `<div class="item ${isNow ? "now" : ""} ${isPast ? "past" : ""}">
+    <span class="time">${i.start.slice(11)}</span><span class="bar ${i.category}"></span>
+    <span class="title">${esc(i.title)}${isNow ? '<span class="live">עכשיו</span>' : ""}</span>
+    ${withChannel ? `<span class="badge">${esc(i.channel)}</span>` : ""}</div>`;
+}
+
+function renderList() {
+  const now = ymd(new Date()) + "T" + pad(new Date().getHours()) + ":" + pad(new Date().getMinutes());
+  const dayKey = st.day === "today" ? ymd(new Date()) : st.day;
+  const q = st.q.trim().toLowerCase();
+  const items = data.items.filter(i =>
+    (st.day === "all" || i.start.startsWith(dayKey)) &&
+    st.cats.includes(i.category) &&
+    !st.hidden.includes(i.channel) &&
+    (!st.hidePast || i.end > now) &&
+    (!q || i.title.toLowerCase().includes(q) || i.channel.toLowerCase().includes(q)));
+
+  const m = $("main");
+  if (!items.length) { m.innerHTML = '<div class="empty">אין שידורים שמתאימים לסינון</div>'; return; }
+
+  if (st.view === "time") {
+    const byDay = {};
+    items.forEach(i => (byDay[i.start.slice(0, 10)] ||= []).push(i));
+    m.innerHTML = Object.entries(byDay).map(([k, list]) =>
+      `<div class="day">${dayLabel(k)}</div><div class="list">${list.map(i => itemHTML(i, now, true)).join("")}</div>`
+    ).join("");
+  } else {
+    const byCh = {};
+    items.forEach(i => (byCh[i.channel] ||= []).push(i));
+    m.innerHTML = `<div class="grid">${Object.entries(byCh).sort((a, b) => byChannel(a[0], b[0])).map(([ch, list]) =>
+      `<div class="list col"><h3>${esc(ch)}</h3>${list.map(i =>
+        (st.day === "all" ? `<div class="item" style="padding:4px 12px;color:var(--muted);font-size:13px">${dayLabel(i.start.slice(0, 10))}</div>` : "") +
+        itemHTML(i, now, false)).join("")}</div>`).join("")}</div>`;
+    if (st.day === "all") dedupeDayRows();
+  }
+}
+
+// In "by channel" + "all days", show the day label only when it changes
+function dedupeDayRows() {
+  document.querySelectorAll(".col").forEach(col => {
+    let last = "";
+    col.querySelectorAll('.item[style]').forEach(r => {
+      if (r.textContent === last) r.remove(); else last = r.textContent;
+    });
+  });
+}
+
+function update() { save(); renderControls(); renderList(); }
+
+async function load() {
+  try {
+    const r = await fetch("schedule.json", { cache: "no-store" });
+    data = await r.json();
+    const u = data.updated ? `עודכן ${data.updated.slice(8, 10)}.${data.updated.slice(5, 7)} ${data.updated.slice(11)}` : "טוען…";
+    $("updated").innerHTML = esc(u) + (data.errors?.length ? ` <span class="err">(${data.errors.length} ימים לא נטענו)</span>` : "");
+    update();
+  } catch (e) { $("updated").textContent = "שגיאה בטעינה"; }
+}
+
+$("q").value = st.q;
+$("q").oninput = e => { st.q = e.target.value; save(); renderList(); };
+load();
+setInterval(renderList, 60e3);   // keep "עכשיו" / past markers current
+setInterval(load, 10 * 60e3);    // pick up the hourly update
+</script>
+</body>
+</html>
