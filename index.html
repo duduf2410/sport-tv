@@ -78,6 +78,17 @@
   .col h3 { margin: 0; padding: 8px 12px; font-size: 15px; border-bottom: 1px solid var(--line); }
   .col .item { grid-template-columns: 48px 6px 1fr; }
   .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+  /* Favourite team games */
+  :root { --fav: #f5b301; --fav-bg: #fff6d6; }
+  @media (prefers-color-scheme: dark) { :root { --fav-bg: #3a3112; } }
+  .item.fav { background: var(--fav-bg); box-shadow: inset -4px 0 0 var(--fav); }
+  .item.fav .title { font-weight: 700; }
+  .star { color: var(--fav); margin-inline-end: 4px; }
+  .chip.favchip { border-color: var(--fav); }
+  .favform { display: flex; gap: 6px; flex: 1; min-width: 0; }
+  .favform input { flex: 1; min-width: 0; width: auto; }
+  .favform select { font: inherit; font-size: 14px; border-radius: 8px; border: 1px solid var(--line);
+                    background: var(--card); color: var(--text); padding: 4px; }
   .err { color: var(--accent); font-size: 13px; }
 </style>
 </head>
@@ -96,6 +107,16 @@
     <div class="row"><span class="label">ענף</span><span id="cats" class="chips"></span></div>
     <div class="row"><span class="label">ערוצים</span><span id="channels" class="chips"></span></div>
     <div class="row"><span class="label">תצוגה</span><span id="views" class="chips"></span></div>
+    <div class="row"><span class="label">מועדפים</span><span id="favs" class="chips"></span></div>
+    <div class="row"><span class="label"></span>
+      <form class="favform" id="favForm">
+        <input type="search" id="favName" list="teamList" placeholder="הוסף קבוצה: מכבי תל אביב">
+        <select id="favSport"><option value="basketball">כדורסל</option><option value="football">כדורגל</option>
+          <option value="any">כל ענף</option></select>
+        <button class="plain" type="submit">הוסף</button>
+      </form>
+      <datalist id="teamList"></datalist>
+    </div>
   </div>
 </header>
 <main id="main"></main>
@@ -110,7 +131,7 @@ const rank = c => { const i = ORDER.indexOf(c); return i < 0 ? 99 : i; };
 const byChannel = (a, b) => rank(a) - rank(b) || a.localeCompare(b, "he");
 
 let data = { items: [] };
-let st = { day: "today", view: "time", cats: Object.keys(CATS), hidden: DEFAULT_HIDDEN, q: "", hidePast: true };
+let st = { day: "today", view: "time", cats: Object.keys(CATS), hidden: DEFAULT_HIDDEN, q: "", hidePast: true, favs: [] };
 try { Object.assign(st, JSON.parse(localStorage.getItem("sporttv") || "{}")); } catch (e) {}
 const save = () => { try { localStorage.setItem("sporttv", JSON.stringify(st)); } catch (e) {} };
 
@@ -118,6 +139,26 @@ const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Titles mix full names and abbreviations ("מכבי תל אביב" / "מכבי ת"א"), so compare normalized text
+const ABBR = [['ת"א', "תל אביב"], ['פ"ת', "פתח תקוה"], ['ב"ש', "באר שבע"], ['ר"ג', "רמת גן"],
+              ['ראשל"צ', "ראשון לציון"], ["תקווה", "תקוה"], ["קריית", "קרית"]];
+const norm = s => {
+  s = s.replace(/[״”“]/g, '"').replace(/[׳’`]/g, "'");
+  for (const [a, b] of ABBR) s = s.split(a).join(b);
+  return s.replace(/\s+/g, " ").trim();
+};
+const isFav = i => st.favs.some(f => (f.sport === "any" || f.sport === i.category) && norm(i.title).includes(norm(f.name)));
+
+// Team names for autocomplete: "ליגה: קבוצה א - קבוצה ב, מחזור 3" -> both teams
+function teamNames() {
+  const set = new Set();
+  data.items.filter(i => i.category === "football" || i.category === "basketball").forEach(i => {
+    const m = i.title.split(":").slice(1).join(":").split(",")[0];
+    if (m.includes(" - ")) m.split(" - ").forEach(t => { t = norm(t); if (t.length > 1) set.add(t); });
+  });
+  return [...set].sort((a, b) => a.localeCompare(b, "he"));
+}
 
 function dayLabel(key) {
   const today = new Date(); const tomorrow = new Date(Date.now() + 864e5);
@@ -157,6 +198,14 @@ function renderControls() {
   v.append(chip("לפי ערוץ", st.view === "channel", () => { st.view = "channel"; update(); }));
   v.append(chip("הסתר מה שנגמר", st.hidePast, () => { st.hidePast = !st.hidePast; update(); }));
 
+  const SPORT = { basketball: "כדורסל", football: "כדורגל", any: "כל ענף" };
+  const fv = $("favs"); fv.innerHTML = "";
+  if (!st.favs.length) fv.innerHTML = '<span class="label">אין עדיין</span>';
+  st.favs.forEach((f, idx) => fv.append(chip(`★ ${f.name} · ${SPORT[f.sport]}  ✕`, false, () => {
+    st.favs = st.favs.filter((_, j) => j !== idx); update();
+  }, "favchip")));
+  $("teamList").innerHTML = teamNames().map(t => `<option value="${esc(t)}">`).join("");
+
   // Filter button shows how many restrictions are active (folded away on phones)
   const n = (Object.keys(CATS).length - st.cats.length) +
     st.hidden.filter(h => !DEFAULT_HIDDEN.includes(h) && chans.includes(h)).length + (st.q.trim() ? 1 : 0);
@@ -172,16 +221,23 @@ $("resetBtn").onclick = () => {
   update();
 };
 
+$("favForm").onsubmit = e => {
+  e.preventDefault();
+  const name = $("favName").value.trim(), sport = $("favSport").value;
+  if (name && !st.favs.some(f => norm(f.name) === norm(name) && f.sport === sport)) st.favs = [...st.favs, { name, sport }];
+  $("favName").value = ""; update();
+};
+
 $("filterBtn").onclick = () => {
   const open = $("filters").classList.toggle("open");
   document.querySelector("header").classList.toggle("expanded", open);
 };
 
 function itemHTML(i, now, withChannel) {
-  const isNow = i.start <= now && now < i.end, isPast = i.end <= now;
-  return `<div class="item ${isNow ? "now" : ""} ${isPast ? "past" : ""}">
+  const isNow = i.start <= now && now < i.end, isPast = i.end <= now, fav = isFav(i);
+  return `<div class="item ${isNow ? "now" : ""} ${isPast ? "past" : ""} ${fav ? "fav" : ""}">
     <span class="time">${i.start.slice(11)}</span><span class="bar ${i.category}"></span>
-    <span class="title">${esc(i.title)}${isNow ? '<span class="live">עכשיו</span>' : ""}</span>
+    <span class="title">${fav ? '<span class="star">★</span>' : ""}${esc(i.title)}${isNow ? '<span class="live">עכשיו</span>' : ""}</span>
     ${withChannel ? `<span class="badge">${esc(i.channel)}</span>` : ""}</div>`;
 }
 
